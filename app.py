@@ -166,7 +166,7 @@ def main():
     if run_tests(df_raw.copy()):
         
         # --- PREPARAÇÃO DOS DADOS PARA APLICAÇÃO ---
-        df = calcular_datas(df_raw)
+        df_inicial_calculado = calcular_datas(df_raw) # Renomeado para clareza
 
         # --- DEFINIÇÃO DA APLICAÇÃO DASH ---
         app = dash.Dash(__name__)
@@ -185,12 +185,14 @@ def main():
                     html.Span("Nenhuma", id='selected-task-name', style={'color': 'blue', 'fontWeight': 'bold'}),
                     html.B("Nova Data de Início:"),
                     dcc.DatePickerSingle(id='start-date-picker', display_format='DD/MM/YYYY', disabled=True, style={'width': '150px', 'marginRight': '10px'}),
-                    html.Button('Limpar Seleção', id='clear-selection-button', n_clicks=0, style={'padding': '5px 10px'})
+                    html.Button('Limpar Seleção', id='clear-selection-button', n_clicks=0, style={'padding': '5px 10px', 'marginRight': '5px'}),
+                    html.Button('Datas Originais', id='reset-dates-button', n_clicks=0, style={'padding': '5px 10px'})
                 ])
             ]),
             dcc.Graph(id='gantt-chart', style={'height': '700px'}),
-            dcc.Store(id='gantt-data-store', data=df.to_json(date_format='iso', orient='split')),
-            dcc.Store(id='selected-task-store', data=None)
+            dcc.Store(id='gantt-data-store', data=df_inicial_calculado.to_json(date_format='iso', orient='split'), storage_type='local'), # Persistir no localStorage
+            dcc.Store(id='original-gantt-data-store', data=df_inicial_calculado.to_json(date_format='iso', orient='split')), # Estado original, não persistido
+            dcc.Store(id='selected-task-store', data=None, storage_type='memory') # Seleção é efêmera
         ])
 
         # --- DEFINIÇÃO DAS CALLBACKS (INTERATIVIDADE) ---
@@ -224,6 +226,23 @@ def main():
             # Quando o botão é clicado, retorna os valores para limpar a seleção
             # Estes são os mesmos valores retornados por store_selected_task quando clickData é None
             return None, "Nenhuma", True, None
+
+        @app.callback(
+            Output('gantt-data-store', 'data', allow_duplicate=True),
+            Output('selected-task-store', 'data', allow_duplicate=True),
+            Output('selected-task-name', 'children', allow_duplicate=True),
+            Output('start-date-picker', 'disabled', allow_duplicate=True),
+            Output('start-date-picker', 'date', allow_duplicate=True),
+            Input('reset-dates-button', 'n_clicks'),
+            State('original-gantt-data-store', 'data'),
+            prevent_initial_call=True
+        )
+        def reset_to_original_dates(n_clicks, original_json_data):
+            if not n_clicks or original_json_data is None:
+                # Evita execução desnecessária ou se o estado original não estiver disponível
+                return no_update, no_update, no_update, no_update, no_update
+            # Retorna os dados originais para o gantt-data-store e limpa a seleção
+            return original_json_data, None, "Nenhuma", True, None
 
 
         @app.callback(
@@ -302,9 +321,10 @@ def main():
                                 bar_idx_in_trace = list(trace.y).index(selected_nick_to_highlight)
                                 
                                 # Destacar a barra selecionada
-                                current_opacities[bar_idx_in_trace] = default_opacity # Opacidade total
-                                current_line_widths[bar_idx_in_trace] = 2.5           # Borda mais espessa
-                                current_line_colors[bar_idx_in_trace] = 'black'       # Borda preta
+                                current_opacities[bar_idx_in_trace] = default_opacity  # Opacidade total
+                                current_line_widths[bar_idx_in_trace] = 5 # Borda mais espessa
+                                # Para um efeito de sombra suave, usar uma cor de borda escura e semi-transparente
+                                current_line_colors[bar_idx_in_trace] = trace.marker.color
                             except (ValueError, AttributeError):
                                 pass # Ignorar se não encontrar ou atributo faltar
                 
