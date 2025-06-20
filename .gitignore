@@ -1,0 +1,53 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ambientes virtuais
+venv/
+.venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Test and coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Dash/Plotly specific (less common, but if temporary files appear)
+# dash_app_data/ # Uncomment if Dash creates a data directory you don't want to track
+
+# Data files that are generated or should not be tracked
+# *.csv # Uncomment if you have generated CSVs you don't want to track
+# *.xlsx
+# *.json # Uncomment if you have generated JSONs you don't want to track
+
+# Pip cache
+pip-cache/
+
+# Jupyter Notebook checkpoints (if you use notebooks)
+.ipynb_checkpoints
+
+# Logs
+*.log
+
+# Database files (if any)
+*.sqlite
+*.db
+
+# Environment variables file
+.env
