@@ -1,0 +1,43 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main # Usar 'main' como a branch principal
+  pull_request:
+    branches:
+      - main # Usar 'main' como a branch principal
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest # O sistema operacional onde o job será executado
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4 # Action para baixar o código do repositório
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x' # Use a versão do Python que você usa (ex: '3.9', '3.10', '3.11', '3.12')
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run tests (if applicable)
+      # Este passo assume que rodar o script principal (app.py) executa os testes
+      # Se seus testes estiverem em um arquivo separado (ex: test_app.py) e usarem pytest,
+      # você mudaria o comando para algo como 'pytest'
+      run: python app.py
+      # Nota: Certifique-se de que run_tests() no seu app.py retorne um código de saída diferente de zero em caso de falha
+      # para que o GitHub Actions marque o job como falha. Atualmente, ele apenas imprime FALHA.
+      # Uma forma simples é adicionar 'import sys' e chamar 'sys.exit(1)' em caso de falha no run_tests.
+
+    # Você pode adicionar mais passos aqui, como linting (flake8, pylint), formatação (black), etc.
+    # Exemplo (requer 'pip install flake8'):
+    # - name: Lint with flake8
+    #   run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    # - name: Check code formatting with black (requires 'pip install black')
+    #   run: black --check .
