@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -27,17 +27,23 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run tests (if applicable)
-      # Este passo assume que rodar o script principal (app.py) executa os testes
-      # Se seus testes estiverem em um arquivo separado (ex: test_app.py) e usarem pytest,
-      # você mudaria o comando para algo como 'pytest'
       run: python app.py
       # Nota: Certifique-se de que run_tests() no seu app.py retorne um código de saída diferente de zero em caso de falha
       # para que o GitHub Actions marque o job como falha. Atualmente, ele apenas imprime FALHA.
       # Uma forma simples é adicionar 'import sys' e chamar 'sys.exit(1)' em caso de falha no run_tests.
 
-    # Você pode adicionar mais passos aqui, como linting (flake8, pylint), formatação (black), etc.
-    # Exemplo (requer 'pip install flake8'):
-    # - name: Lint with flake8
-    #   run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-    # - name: Check code formatting with black (requires 'pip install black')
-    #   run: black --check .
+  deploy:
+    # Garante que o deploy só roda se o job de testes passar
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    # Condição para deploy: só roda em push para a branch 'main' (não em Pull Requests)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Trigger Render Deploy
+        # Usa um simples comando 'curl' para acionar a deploy hook.
+        # Isso diz ao Render para baixar a última versão do código da branch 'main' e fazer o deploy.
+        run: curl "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+        env:
+          # Garante que o segredo está disponível como uma variável de ambiente para o comando curl
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}

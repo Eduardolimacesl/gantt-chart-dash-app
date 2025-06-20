@@ -7,6 +7,7 @@ import plotly.express as px
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
+import io
 
 # ==============================================================================
 # 1. LÓGICA PRINCIPAL E FUNÇÕES DE TESTE
@@ -78,7 +79,7 @@ def run_tests(df_para_testar):
         new_start_date_str = '2025-09-15'
         
         # Replica a lógica da callback update_task_dates
-        df_updated = pd.read_json(json_data, orient='split', convert_dates=False)
+        df_updated = pd.read_json(io.StringIO(json_data), orient='split', convert_dates=False)
         df_updated.update(df_updated[['Data Início', 'Data Término']].apply(pd.to_datetime))
         df_updated['Duracao'] = pd.to_timedelta(df_updated['Duracao'])
         new_start_dt = pd.to_datetime(new_start_date_str)
@@ -176,7 +177,7 @@ def main():
             html.H1("ITA-FZ: Cronograma Interativo da 2ª Etapa da 1ª Fase - SOP", style={'textAlign': 'center', 'color': '#333'}),
             html.Div(className='control-panel', style={'backgroundColor': '#f9f9f9', 'padding': '15px', 'borderRadius': '8px', 'marginBottom': '20px', 'border': '1px solid #ddd'}, children=[
                 html.H3("Instruções:", style={'marginTop': '0'}),
-                html.P("1. Clique em uma das barras de tarefa no gráfico para selecioná-la."),
+                html.P("1. Clique em uma das barras de tarefa no gráfico para selecioná-la, ou remover a seleção clicando novamente."),
                 html.P("2. Use o seletor de data abaixo para escolher um novo dia de início para a tarefa."),
                 html.P("A duração total da tarefa será mantida automaticamente.", style={'fontWeight': 'bold'}),
                 html.Hr(),
@@ -185,7 +186,6 @@ def main():
                     html.Span("Nenhuma", id='selected-task-name', style={'color': 'blue', 'fontWeight': 'bold'}),
                     html.B("Nova Data de Início:"),
                     dcc.DatePickerSingle(id='start-date-picker', display_format='DD/MM/YYYY', disabled=True, style={'width': '150px', 'marginRight': '10px'}),
-                    html.Button('Limpar Seleção', id='clear-selection-button', n_clicks=0, style={'padding': '5px 10px', 'marginRight': '5px'}),
                     html.Button('Datas Originais', id='reset-dates-button', n_clicks=0, style={'padding': '5px 10px'})
                 ])
             ]),
@@ -202,30 +202,32 @@ def main():
             Output('start-date-picker', 'disabled'),
             Output('start-date-picker', 'date'),
             Input('gantt-chart', 'clickData'),
-            State('gantt-data-store', 'data')
+            State('gantt-data-store', 'data'),
+            State('selected-task-store', 'data')
         )
-        def store_selected_task(clickData, json_data):
-            if not clickData: return None, "Nenhuma", True, None
-            df_current = pd.read_json(json_data, orient='split', convert_dates=['Data Início', 'Data Término', 'Duracao'])
+        def store_selected_task(clickData, json_data, current_selected_index):
+            # Se não houver clique (ex: clique fora das barras), limpa a seleção.
+            if not clickData:
+                return None, "Nenhuma", True, None
+
+            # Usa io.StringIO para evitar o aviso de depreciação do Pandas
+            df_current = pd.read_json(io.StringIO(json_data), orient='split', convert_dates=['Data Início', 'Data Término', 'Duracao'])
+            
             task_nick = clickData['points'][0]['y']
             task_info = df_current[df_current['Nick'] == task_nick]
-            if task_info.empty: return no_update
-            task_index = task_info.index[0]
-            task_start_date = task_info.iloc[0]['Data Início']
-            return task_index, f"'{task_nick}'", False, task_start_date
 
-        @app.callback(
-            Output('selected-task-store', 'data', allow_duplicate=True),
-            Output('selected-task-name', 'children', allow_duplicate=True),
-            Output('start-date-picker', 'disabled', allow_duplicate=True),
-            Output('start-date-picker', 'date', allow_duplicate=True),
-            Input('clear-selection-button', 'n_clicks'),
-            prevent_initial_call=True # Garante que a callback não seja chamada na inicialização
-        )
-        def clear_selection_by_button(n_clicks):
-            # Quando o botão é clicado, retorna os valores para limpar a seleção
-            # Estes são os mesmos valores retornados por store_selected_task quando clickData é None
-            return None, "Nenhuma", True, None
+            if task_info.empty:
+                return no_update
+
+            clicked_task_index = task_info.index[0]
+
+            # Se a barra clicada já for a selecionada, limpa a seleção.
+            if clicked_task_index == current_selected_index:
+                return None, "Nenhuma", True, None
+            
+            # Caso contrário, seleciona a nova tarefa.
+            task_start_date = task_info.iloc[0]['Data Início']
+            return clicked_task_index, f"'{task_nick}'", False, task_start_date
 
         @app.callback(
             Output('gantt-data-store', 'data', allow_duplicate=True),
@@ -253,8 +255,10 @@ def main():
             prevent_initial_call=True
         )
         def update_task_dates(new_start_date, task_index, json_data):
-            if not new_start_date or task_index is None: return no_update
-            df_updated = pd.read_json(json_data, orient='split', convert_dates=False)
+            if not new_start_date or task_index is None:
+                return no_update
+            # Usa io.StringIO para evitar o aviso de depreciação do Pandas
+            df_updated = pd.read_json(io.StringIO(json_data), orient='split', convert_dates=False)
             df_updated.update(df_updated[['Data Início', 'Data Término']].apply(pd.to_datetime))
             df_updated['Duracao'] = pd.to_timedelta(df_updated['Duracao'])
             duration = df_updated.loc[task_index, 'Duracao']
@@ -269,25 +273,21 @@ def main():
              Input('selected-task-store', 'data')] # Tarefa selecionada como Input
         )
         def update_gantt_chart(json_data, selected_task_idx_from_store):
-            df_chart = pd.read_json(json_data, orient='split', convert_dates=['Data Início', 'Data Término'])
+            df_chart = pd.read_json(io.StringIO(json_data), orient='split', convert_dates=['Data Início', 'Data Término'])
             df_chart = df_chart.sort_values(by='Item', ascending=False)
 
             # Obter detalhes da tarefa selecionada (se houver) para destaque
             selected_nick_to_highlight = None
             selected_project_of_highlighted_task = None
             if selected_task_idx_from_store is not None:
-                # json_data é o gantt-data-store completo (DataFrame não filtrado)
-                # Não precisamos converter datas aqui, pois só pegamos Nick e Projetos
-                df_full_for_selection_details = pd.read_json(json_data, orient='split')
+                # Usa io.StringIO para evitar o aviso de depreciação do Pandas
+                df_full_for_selection_details = pd.read_json(io.StringIO(json_data), orient='split')
                 try:
                     # selected_task_idx_from_store é o índice do DataFrame original
                     task_details = df_full_for_selection_details.loc[selected_task_idx_from_store]
                     selected_nick_to_highlight = task_details['Nick']
                     selected_project_of_highlighted_task = task_details['Projetos']
                 except KeyError:
-                    # Índice não encontrado no DataFrame. Isso é improvável se os stores estiverem
-                    # sincronizados, mas é bom ter um tratamento de erro.
-                    # Nenhuma ação de destaque será tomada.
                     pass
 
             fig = px.timeline(df_chart, x_start='Data Início', x_end='Data Término', y='Nick', color='Projetos', text="Projetos")
