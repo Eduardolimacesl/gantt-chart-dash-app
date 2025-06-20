@@ -8,6 +8,7 @@ import pandas as pd
 from datetime import datetime
 from pathlib import Path
 import io
+import sys
 
 # ==============================================================================
 # 1. LÓGICA PRINCIPAL E FUNÇÕES DE TESTE
@@ -95,7 +96,9 @@ def run_tests(df_para_testar):
 
     print("\n" + "="*40)
     print("TODOS OS TESTES PASSARAM COM SUCESSO!")
-    print("="*40)
+    print("="*40)    
+    # Se o script for executado apenas para testes, não queremos iniciar o servidor.
+    # Verificamos se há um argumento de linha de comando para isso.
     return True
 
 # ==============================================================================
@@ -356,7 +359,9 @@ def main():
         app.run(debug=True)
 
     else:
-        print("\nA aplicação NÃO será iniciada devido a falhas nos testes.")
+        print("\nA aplicação NÃO será iniciada devido a falhas nos testes.", file=sys.stderr)
+        # Retorna um código de saída 1 para sinalizar falha ao GitHub Actions
+        sys.exit(1)
 
 # ==============================================================================
 # 4. PONTO DE ENTRADA DO SCRIPT
