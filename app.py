@@ -248,7 +248,12 @@ def main():
 
             fig.update_layout(
                 title={'text': "ITA-FZ: 2ªEtapa da 1ª FASE - Cronograma SOP", 'y':0.98, 'x': 0.5, 'xanchor': 'center', 'yanchor': 'top', 'font': dict(size=20, color="Black", family="Arial, sans-serif")},
-                yaxis_title="Projetos", showlegend=False, transition_duration=300)
+                yaxis_title="Projetos", 
+                showlegend=False,
+                legend_title_text='Projetos',
+                transition_duration=300,
+                margin=dict(l=150, r=20, t=80, b=50)
+            )
             return fig
 
         # --- INÍCIO DO SERVIDOR ---
