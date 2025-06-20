@@ -180,11 +180,12 @@ def main():
                 html.P("2. Use o seletor de data abaixo para escolher um novo dia de início para a tarefa."),
                 html.P("A duração total da tarefa será mantida automaticamente.", style={'fontWeight': 'bold'}),
                 html.Hr(),
-                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '20px'}, children=[
+                html.Div(style={'display': 'flex', 'alignItems': 'center', 'gap': '10px', 'flexWrap': 'wrap'}, children=[ # Ajustado gap e adicionado flexWrap
                     html.B("Projeto Selecionado:"),
                     html.Span("Nenhuma", id='selected-task-name', style={'color': 'blue', 'fontWeight': 'bold'}),
                     html.B("Nova Data de Início:"),
-                    dcc.DatePickerSingle(id='start-date-picker', display_format='DD/MM/YYYY', disabled=True, style={'width': '150px'})
+                    dcc.DatePickerSingle(id='start-date-picker', display_format='DD/MM/YYYY', disabled=True, style={'width': '150px', 'marginRight': '10px'}),
+                    html.Button('Limpar Seleção', id='clear-selection-button', n_clicks=0, style={'padding': '5px 10px'})
                 ])
             ]),
             dcc.Graph(id='gantt-chart', style={'height': '700px'}),
@@ -212,6 +213,20 @@ def main():
             return task_index, f"'{task_nick}'", False, task_start_date
 
         @app.callback(
+            Output('selected-task-store', 'data', allow_duplicate=True),
+            Output('selected-task-name', 'children', allow_duplicate=True),
+            Output('start-date-picker', 'disabled', allow_duplicate=True),
+            Output('start-date-picker', 'date', allow_duplicate=True),
+            Input('clear-selection-button', 'n_clicks'),
+            prevent_initial_call=True # Garante que a callback não seja chamada na inicialização
+        )
+        def clear_selection_by_button(n_clicks):
+            # Quando o botão é clicado, retorna os valores para limpar a seleção
+            # Estes são os mesmos valores retornados por store_selected_task quando clickData é None
+            return None, "Nenhuma", True, None
+
+
+        @app.callback(
             Output('gantt-data-store', 'data'),
             Input('start-date-picker', 'date'),
             State('selected-task-store', 'data'),
@@ -229,14 +244,74 @@ def main():
             df_updated.loc[task_index, 'Data Término'] = new_start_dt + duration
             return df_updated.to_json(date_format='iso', orient='split')
 
-        @app.callback(Output('gantt-chart', 'figure'), Input('gantt-data-store', 'data'))
-        def update_gantt_chart(json_data):
+        @app.callback(
+            Output('gantt-chart', 'figure'),
+            [Input('gantt-data-store', 'data'),
+             Input('selected-task-store', 'data')] # Tarefa selecionada como Input
+        )
+        def update_gantt_chart(json_data, selected_task_idx_from_store):
             df_chart = pd.read_json(json_data, orient='split', convert_dates=['Data Início', 'Data Término'])
             df_chart = df_chart.sort_values(by='Item', ascending=False)
+
+            # Obter detalhes da tarefa selecionada (se houver) para destaque
+            selected_nick_to_highlight = None
+            selected_project_of_highlighted_task = None
+            if selected_task_idx_from_store is not None:
+                # json_data é o gantt-data-store completo (DataFrame não filtrado)
+                # Não precisamos converter datas aqui, pois só pegamos Nick e Projetos
+                df_full_for_selection_details = pd.read_json(json_data, orient='split')
+                try:
+                    # selected_task_idx_from_store é o índice do DataFrame original
+                    task_details = df_full_for_selection_details.loc[selected_task_idx_from_store]
+                    selected_nick_to_highlight = task_details['Nick']
+                    selected_project_of_highlighted_task = task_details['Projetos']
+                except KeyError:
+                    # Índice não encontrado no DataFrame. Isso é improvável se os stores estiverem
+                    # sincronizados, mas é bom ter um tratamento de erro.
+                    # Nenhuma ação de destaque será tomada.
+                    pass
+
             fig = px.timeline(df_chart, x_start='Data Início', x_end='Data Término', y='Nick', color='Projetos', text="Projetos")
             fig.update_traces(insidetextanchor='start')
             fig.update_xaxes(dtick="M1", tick0=ordem_de_servico, tickformat='%b/%Y')
             
+            # Definir opacidade padrão e destacada
+            default_opacity = 1.0
+            dimmed_opacity = 0.35 # Ajuste este valor conforme sua preferência
+
+            # Aplicar opacidade e bordas
+            for trace in fig.data:
+                if not hasattr(trace, 'y') or not trace.y: # Pular se a trace não tiver barras
+                    continue
+
+                num_bars_in_trace = len(trace.y)
+                
+                # Inicializar opacidades e bordas para a trace atual
+                current_opacities = [default_opacity] * num_bars_in_trace
+                current_line_widths = [0.5] * num_bars_in_trace # Borda sutil padrão
+                current_line_colors = ['rgba(0,0,0,0.2)'] * num_bars_in_trace # Cor sutil padrão
+
+                if selected_nick_to_highlight and selected_project_of_highlighted_task:
+                    # Se uma tarefa está selecionada, todas as barras ficam opacas por padrão
+                    current_opacities = [dimmed_opacity] * num_bars_in_trace
+                    
+                    # Se esta trace contém a tarefa selecionada
+                    if hasattr(trace, 'name') and trace.name == selected_project_of_highlighted_task:
+                        if selected_nick_to_highlight in trace.y:
+                            try:
+                                bar_idx_in_trace = list(trace.y).index(selected_nick_to_highlight)
+                                
+                                # Destacar a barra selecionada
+                                current_opacities[bar_idx_in_trace] = default_opacity # Opacidade total
+                                current_line_widths[bar_idx_in_trace] = 2.5           # Borda mais espessa
+                                current_line_colors[bar_idx_in_trace] = 'black'       # Borda preta
+                            except (ValueError, AttributeError):
+                                pass # Ignorar se não encontrar ou atributo faltar
+                
+                trace.marker.opacity = current_opacities
+                trace.marker.line.width = current_line_widths
+                trace.marker.line.color = current_line_colors
+
             data_os_ts = datetime(2025, 8, 1).timestamp() * 1000
             credenciamento_ts = datetime(2026, 6, 3).timestamp() * 1000
             pre_credenciamento_ts = datetime(2026, 4, 3).timestamp() * 1000
@@ -268,4 +343,3 @@ def main():
 # ==============================================================================
 if __name__ == '__main__':
     main()
-
